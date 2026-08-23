@@ -1,0 +1,7 @@
+{
+  "formatters": { "python": ["ruff_format"] },
+  "linters":    { "python": ["ruff"] },
+  "lsp":        { "pylsp": false, "ty": { "settings": { "ty": { "x": 1 } } }, "definitely_not_a_server": true },
+  "bin":        { "ruff": "tools/myruff", "ty": "tools/nope" },
+  "test":       "pytest -q"
+}

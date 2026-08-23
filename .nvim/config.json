@@ -1,0 +1,24 @@
+{
+  "formatters": {
+    "lua": ["stylua"]
+  },
+  "indent": {
+    "lua": { "width": 2, "style": "spaces" }
+  },
+  "line_length": {
+    "lua": 120
+  },
+  "lsp": {
+    "lua_ls": {
+      "settings": {
+        "Lua": {
+          "runtime": { "version": "LuaJIT" },
+          "diagnostics": { "globals": ["vim"] },
+          "workspace": { "checkThirdParty": false },
+          "telemetry": { "enable": false }
+        }
+      }
+    }
+  },
+  "test": "nvim -l tests/run.lua"
+}
