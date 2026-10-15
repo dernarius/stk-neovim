@@ -197,6 +197,57 @@ return function(h, FIX)
   project.reload()
   h.ok(":ProjectEdit's file is trusted and parses", vim.tbl_contains(project.get(b).sources, ".nvim/config.json"))
 
+  -- ---- :ProjectInit ----
+  -- It works on the launch directory rather than any buffer's root, so the
+  -- checks aim root.launched at a fixture the way a real launch would have.
+  local launched = project.root.launched
+  local function launch_in(dir)
+    vim.fn.mkdir(dir, "p")
+    project.root.launched = assert(vim.uv.fs_realpath(dir))
+  end
+  local function excludes(repo)
+    return vim.fn.readfile(repo .. "/.git/info/exclude")
+  end
+
+  local repo = FIX .. "/initrepo"
+  launch_in(repo)
+  assert(vim.system({ "git", "init", "-q", repo }, { text = true }):wait().code == 0)
+
+  local success3, err3 = pcall(vim.cmd, "ProjectInit")
+  h.ok(":ProjectInit runs", success3, tostring(err3))
+  h.ok(":ProjectInit creates the config", vim.uv.fs_stat(repo .. "/.nvim/config.json") ~= nil)
+  h.ok(":ProjectInit anchors the pattern to the repo root", vim.tbl_contains(excludes(repo), "/.nvim/"))
+  h.ok(":ProjectInit leaves .gitignore alone", vim.uv.fs_stat(repo .. "/.gitignore") == nil)
+
+  -- The point of the whole exercise: git itself has to agree the directory is
+  -- invisible. Asserting on the file we just wrote would only prove we can
+  -- write a file.
+  local status = vim.system({ "git", "-C", repo, "status", "--porcelain" }, { text = true }):wait()
+  h.eq(":ProjectInit's .nvim is invisible to git", vim.trim(status.stdout), "")
+
+  vim.cmd("ProjectInit")
+  local written = 0
+  for _, line in ipairs(excludes(repo)) do
+    written = written + (line == "/.nvim/" and 1 or 0)
+  end
+  h.eq(":ProjectInit re-run adds no second pattern", written, 1)
+
+  -- A launch below the repo root excludes that subdirectory only, not every
+  -- .nvim in the repo.
+  launch_in(repo .. "/sub")
+  vim.cmd("ProjectInit")
+  h.ok(":ProjectInit anchors a subdirectory's pattern", vim.tbl_contains(excludes(repo), "/sub/.nvim/"))
+
+  -- Outside a work tree the config is still worth having; only the ignore is
+  -- impossible, and it says so rather than failing.
+  launch_in(FIX .. "/initplain")
+  vim.cmd("ProjectInit")
+  h.ok(":ProjectInit works outside a repo", vim.uv.fs_stat(FIX .. "/initplain/.nvim/config.json") ~= nil)
+  h.ok(":ProjectInit explains an impossible ignore", h.noted("not ignored"))
+
+  project.root.launched = launched
+  project.reload()
+
   -- ---- windows ----
   -- Everything platform-specific routes through project.path, so flipping the one
   -- flag exercises the Windows branches on this machine. That covers the logic,

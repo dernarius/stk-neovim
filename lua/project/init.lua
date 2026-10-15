@@ -7,6 +7,8 @@
 -- Neovim get their own formatters, linters, language servers and executables.
 --
 --   :ProjectInfo     what this buffer resolved to, and why
+--   :ProjectInit     scaffold a .nvim/config.json in the launch directory,
+--                    ignored locally via .git/info/exclude
 --   :ProjectEdit     open (creating if needed) this project's .nvim/config.json
 --   :ProjectReload   re-read config from disk and restart affected LSP clients
 --   :ProjectTest     run the project's `test` command in a terminal
@@ -19,6 +21,7 @@ M.path = require("project.path")
 M.root = require("project.root")
 M.config = require("project.config")
 M.bin = require("project.bin")
+M.git = require("project.git")
 M.lsp = require("project.lsp")
 M.indent = require("project.indent")
 M.column = require("project.column")
@@ -79,20 +82,56 @@ local TEMPLATE = [[
 }
 ]]
 
-local function edit()
-  local dir = M.root.get()
+--- Write the blank config into `dir`, unless one is already sitting there.
+---@param dir string
+---@return string path
+---@return boolean created false when it already existed
+local function scaffold(dir)
   local path = vim.fs.joinpath(dir, ".nvim", "config.json")
+  if vim.uv.fs_stat(path) then
+    return path, false
+  end
 
-  if not vim.uv.fs_stat(path) then
-    vim.fn.mkdir(vim.fs.dirname(path), "p")
-    vim.fn.writefile(vim.split(vim.trim(TEMPLATE), "\n"), path)
-    -- You just asked for this file, so trusting it is not a decision worth
-    -- interrupting you for. Trust is on the directory, so edits keep working.
-    pcall(vim.secure.trust, { action = "allow", path = vim.fs.dirname(path) })
+  vim.fn.mkdir(vim.fs.dirname(path), "p")
+  vim.fn.writefile(vim.split(vim.trim(TEMPLATE), "\n"), path)
+  -- You just asked for this file, so trusting it is not a decision worth
+  -- interrupting you for. Trust is on the directory, so edits keep working.
+  pcall(vim.secure.trust, { action = "allow", path = vim.fs.dirname(path) })
+  return path, true
+end
+
+local function edit()
+  local path, created = scaffold(M.root.get())
+  if created then
     vim.notify(("project: created %s"):format(path))
   end
 
   vim.cmd.edit(vim.fn.fnameescape(path))
+end
+
+local function init()
+  local dir = M.root.launched
+  local path, created = scaffold(dir)
+
+  local lines = { created and ("created %s"):format(path) or ("%s already exists"):format(path) }
+
+  local status, why = M.git.exclude(dir)
+  if status == "written" then
+    table.insert(lines, "git will ignore it locally -- added to info/exclude, not .gitignore")
+  elseif status == "present" then
+    table.insert(lines, "already in info/exclude")
+  else
+    table.insert(lines, ("not ignored -- %s"):format(why))
+  end
+
+  -- `.nvim/` is the FIRST root marker, so creating one can move the root of
+  -- buffers that were resolving to a pyproject.toml or the VCS root above it.
+  -- Same reasoning as M.reload()'s own comment.
+  if created then
+    M.reload()
+  end
+
+  vim.notify("project: " .. table.concat(lines, "\n  "), status and vim.log.levels.INFO or vim.log.levels.WARN)
 end
 
 local function test()
@@ -176,6 +215,7 @@ end
 function M.setup()
   local command = vim.api.nvim_create_user_command
   command("ProjectInfo", info, { desc = "Show the resolved config for this buffer's project" })
+  command("ProjectInit", init, { desc = "Create a blank .nvim/config.json in the launch directory" })
   command("ProjectEdit", edit, { desc = "Edit this project's .nvim/config.json" })
   command("ProjectReload", M.reload, { desc = "Re-read project configs from disk" })
   command("ProjectTest", test, { desc = "Run this project's test command" })

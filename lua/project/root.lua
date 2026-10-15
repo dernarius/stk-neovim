@@ -39,6 +39,17 @@ function M.cwd()
   return normalize(vim.uv.cwd() or ".")
 end
 
+--- The directory Neovim was started in.
+---
+--- Captured once, at load, because it is not the same question as M.cwd():
+--- `:cd`, `:tcd` and any plugin that chdirs all move the process cwd out from
+--- under you, and :ProjectInit means the directory you launched in. Loading
+--- happens from init.lua before anything has had the chance.
+---
+--- Overridable for the same reason as path.windows -- the suites need to aim
+--- it at a fixture.
+M.launched = nil
+
 --- Project root for a buffer.
 --- Buffers without a file on disk (terminals, scratch, unnamed) fall back to cwd.
 ---@param bufnr? integer defaults to the current buffer
@@ -78,6 +89,8 @@ function M.clear(bufnr)
     cache = {}
   end
 end
+
+M.launched = M.cwd()
 
 local group = vim.api.nvim_create_augroup("ProjectRoot", { clear = true })
 
